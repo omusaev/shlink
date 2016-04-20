@@ -1,0 +1,5 @@
+- improve shname generation algorithm to minimize the length
+- implement an app configuration mechanism
+- add front page served by nginx
+
+
