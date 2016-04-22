@@ -16,9 +16,9 @@ const SHLINK_LETTER_BYTES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY
 var dbmap = initDb()
 
 type Shlink struct {
-	Id      int64 `db:"id"`
+	Id      int64
 	Name    string
-	Url     string
+	Source  string
 	Created int64
 }
 
@@ -33,7 +33,9 @@ func initDb() *gorp.DbMap {
 	checkErr(err, "sql.Open failed")
 
 	dbmap := &gorp.DbMap{Db: db, Dialect: gorp.MySQLDialect{"InnoDB", "UTF8"}}
-	dbmap.AddTableWithName(Shlink{}, "shlinks").SetKeys(true, "Id").ColMap("Name").SetUnique(true)
+	table := dbmap.AddTableWithName(Shlink{}, "shlinks").SetKeys(true, "Id")
+	table.ColMap("Name").SetMaxSize(32).SetUnique(true)
+	table.ColMap("Source").SetMaxSize(2048)
 
 	err = dbmap.CreateTablesIfNotExists()
 	checkErr(err, "Create tables failed")
@@ -52,11 +54,11 @@ func generateShlinkName() string {
 	return string(b)
 }
 
-func createShlink(url string) Shlink {
+func createShlink(source string) Shlink {
 	shlink := Shlink{
 		Created: time.Now().UnixNano(),
 		Name:    generateShlinkName(),
-		Url:     url,
+		Source:  source,
 	}
 
 	err := dbmap.Insert(&shlink)
@@ -77,7 +79,7 @@ func ShlinkRedirect(c *gin.Context) {
 	shlink := getShlink(shlink_name)
 
 	if shlink.Name == shlink_name {
-		c.Redirect(301, shlink.Url)
+		c.Redirect(301, shlink.Source)
 	} else {
 		c.Redirect(301, "/")
 	}
@@ -87,13 +89,13 @@ func ShlinkPost(c *gin.Context) {
 	var data Shlink
 
 	c.Bind(&data)
-	shlink := createShlink(data.Url)
+	shlink := createShlink(data.Source)
 
-	if shlink.Url == data.Url {
+	if shlink.Source == data.Source {
 		content := gin.H{
 			"shlink_name": shlink.Name,
 		}
-		c.JSON(201, content)
+		c.JSON(200, content)
 	} else {
 		c.JSON(500, gin.H{"result": "An error occured"})
 	}
@@ -102,7 +104,18 @@ func ShlinkPost(c *gin.Context) {
 func main() {
 	router := gin.Default()
 
-	router.GET("/:shlink_name", ShlinkRedirect)
+	router.Static("/css", "./front/css")
+	router.Static("/fonts", "./front/fonts")
+	router.Static("/js", "./front/js")
+
+	router.LoadHTMLFiles("front/index.html")
+
+	router.GET("/", func(c *gin.Context) {
+		c.HTML(200, "index.html", gin.H{})
+	})
+
+	router.GET("/r/:shlink_name", ShlinkRedirect)
+
 	router.POST("/", ShlinkPost)
 
 	router.Run() // listen and server on 0.0.0.0:8080
